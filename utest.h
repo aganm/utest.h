@@ -1074,17 +1074,27 @@ utest_strncpy_gcc(char *const dst, const char *const src, const size_t size) {
   UTEST_EXCEPTION_WITH_MESSAGE(x, exception_type, exception_message, msg, 1)
 #endif
 
-#define UTEST(SET, NAME)                                                       \
+#ifdef __clang__
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wvariadic-macros"
+#pragma clang diagnostic ignored "-Wc++98-compat-pedantic"
+#endif
+
+#define UTEST(SET, NAME, ...)                                                  \
   UTEST_EXTERN struct utest_state_s utest_state;                               \
-  static void utest_run_##SET##_##NAME(int *utest_result);                     \
-  static void utest_##SET##_##NAME(int *utest_result, size_t utest_index) {    \
+  static void utest_run_##SET##_##NAME##_##__VA_ARGS__(int *utest_result);     \
+  static void utest_##SET##_##NAME##_##__VA_ARGS__(int *utest_result,          \
+                                                   size_t utest_index) {       \
     (void)utest_index;                                                         \
-    utest_run_##SET##_##NAME(utest_result);                                    \
+    utest_run_##SET##_##NAME##_##__VA_ARGS__(utest_result);                    \
   }                                                                            \
-  UTEST_INITIALIZER(utest_register_##SET##_##NAME) {                           \
+  UTEST_INITIALIZER(utest_register_##SET##_##NAME##_##__VA_ARGS__) {           \
     const size_t index = utest_state.tests_length++;                           \
-    const char *name_part = #SET "." #NAME;                                    \
-    const size_t name_size = strlen(name_part) + 1;                            \
+    char name_part[] = #SET "." #NAME "." #__VA_ARGS__;                        \
+    size_t name_size = sizeof(name_part);                                      \
+    if (name_part[name_size - 2] == '.') {                                     \
+      name_part[name_size - 2] = '\0';                                         \
+    }                                                                          \
     char *name = UTEST_PTR_CAST(char *, malloc(name_size));                    \
     utest_state.tests = UTEST_PTR_CAST(                                        \
         struct utest_test_state_s *,                                           \
@@ -1092,7 +1102,7 @@ utest_strncpy_gcc(char *const dst, const char *const src, const size_t size) {
                       sizeof(struct utest_test_state_s) *                      \
                           utest_state.tests_length));                          \
     if (utest_state.tests) {                                                   \
-      utest_state.tests[index].func = &utest_##SET##_##NAME;                   \
+      utest_state.tests[index].func = &utest_##SET##_##NAME##_##__VA_ARGS__;   \
       utest_state.tests[index].name = name;                                    \
       utest_state.tests[index].index = 0;                                      \
       UTEST_SNPRINTF(name, name_size, "%s", name_part);                        \
@@ -1100,7 +1110,7 @@ utest_strncpy_gcc(char *const dst, const char *const src, const size_t size) {
       free(name);                                                              \
     }                                                                          \
   }                                                                            \
-  void utest_run_##SET##_##NAME(int *utest_result)
+  void utest_run_##SET##_##NAME##_##__VA_ARGS__(int *utest_result)
 
 #define UTEST_F_SETUP(FIXTURE)                                                 \
   static void utest_f_setup_##FIXTURE(int *utest_result,                       \
@@ -1120,14 +1130,15 @@ utest_strncpy_gcc(char *const dst, const char *const src, const size_t size) {
 #define UTEST_FIXTURE_SURPRESS_WARNINGS_END
 #endif
 
-#define UTEST_F(FIXTURE, NAME)                                                 \
+#define UTEST_F(FIXTURE, NAME, ...)                                            \
   UTEST_FIXTURE_SURPRESS_WARNINGS_BEGIN                                        \
   UTEST_EXTERN struct utest_state_s utest_state;                               \
   static void utest_f_setup_##FIXTURE(int *, struct FIXTURE *);                \
   static void utest_f_teardown_##FIXTURE(int *, struct FIXTURE *);             \
-  static void utest_run_##FIXTURE##_##NAME(int *, struct FIXTURE *);           \
-  static void utest_f_##FIXTURE##_##NAME(int *utest_result,                    \
-                                         size_t utest_index) {                 \
+  static void utest_run_##FIXTURE##_##NAME##_##__VA_ARGS__(int *,              \
+                                                           struct FIXTURE *);  \
+  static void utest_f_##FIXTURE##_##NAME##_##__VA_ARGS__(int *utest_result,    \
+                                                         size_t utest_index) { \
     struct FIXTURE fixture;                                                    \
     (void)utest_index;                                                         \
     memset(&fixture, 0, sizeof(fixture));                                      \
@@ -1135,13 +1146,16 @@ utest_strncpy_gcc(char *const dst, const char *const src, const size_t size) {
     if (UTEST_TEST_PASSED != *utest_result) {                                  \
       return;                                                                  \
     }                                                                          \
-    utest_run_##FIXTURE##_##NAME(utest_result, &fixture);                      \
+    utest_run_##FIXTURE##_##NAME##_##__VA_ARGS__(utest_result, &fixture);      \
     utest_f_teardown_##FIXTURE(utest_result, &fixture);                        \
   }                                                                            \
-  UTEST_INITIALIZER(utest_register_##FIXTURE##_##NAME) {                       \
+  UTEST_INITIALIZER(utest_register_##FIXTURE##_##NAME##_##__VA_ARGS__) {       \
     const size_t index = utest_state.tests_length++;                           \
-    const char *name_part = #FIXTURE "." #NAME;                                \
-    const size_t name_size = strlen(name_part) + 1;                            \
+    char name_part[] = #FIXTURE "." #NAME "." #__VA_ARGS__;                    \
+    size_t name_size = sizeof(name_part);                                      \
+    if (name_part[name_size - 2] == '.') {                                     \
+      name_part[name_size - 2] = '\0';                                         \
+    }                                                                          \
     char *name = UTEST_PTR_CAST(char *, malloc(name_size));                    \
     utest_state.tests = UTEST_PTR_CAST(                                        \
         struct utest_test_state_s *,                                           \
@@ -1149,7 +1163,8 @@ utest_strncpy_gcc(char *const dst, const char *const src, const size_t size) {
                       sizeof(struct utest_test_state_s) *                      \
                           utest_state.tests_length));                          \
     if (utest_state.tests) {                                                   \
-      utest_state.tests[index].func = &utest_f_##FIXTURE##_##NAME;             \
+      utest_state.tests[index].func =                                          \
+          &utest_f_##FIXTURE##_##NAME##_##__VA_ARGS__;                         \
       utest_state.tests[index].name = name;                                    \
       UTEST_SNPRINTF(name, name_size, "%s", name_part);                        \
     } else if (name) {                                                         \
@@ -1157,8 +1172,8 @@ utest_strncpy_gcc(char *const dst, const char *const src, const size_t size) {
     }                                                                          \
   }                                                                            \
   UTEST_FIXTURE_SURPRESS_WARNINGS_END                                          \
-  void utest_run_##FIXTURE##_##NAME(int *utest_result,                         \
-                                    struct FIXTURE *utest_fixture)
+  void utest_run_##FIXTURE##_##NAME##_##__VA_ARGS__(                           \
+      int *utest_result, struct FIXTURE *utest_fixture)
 
 #define UTEST_I_SETUP(FIXTURE)                                                 \
   static void utest_i_setup_##FIXTURE(                                         \
@@ -1208,6 +1223,10 @@ utest_strncpy_gcc(char *const dst, const char *const src, const size_t size) {
   }                                                                            \
   void utest_run_##FIXTURE##_##NAME##_##INDEX(int *utest_result,               \
                                               struct FIXTURE *utest_fixture)
+
+#ifdef __clang__
+#pragma clang diagnostic pop
+#endif
 
 UTEST_WEAK
 double utest_fabs(double d);
